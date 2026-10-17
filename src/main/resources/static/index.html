@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Student Records</title>
+    <style>
+        body { margin: 0; font-family: Segoe UI, Arial, sans-serif; background: #eef1f6; color: #222; }
+        header { background: #3f51b5; color: #fff; padding: 18px; text-align: center; font-size: 22px; }
+        .wrap { max-width: 900px; margin: 20px auto; padding: 0 12px; }
+        .box { background: #fff; border-radius: 10px; padding: 18px; margin-bottom: 18px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; }
+        input { padding: 10px; border: 1px solid #bbb; border-radius: 6px; font-size: 15px; }
+        button { padding: 10px 18px; border: 0; border-radius: 6px; color: #fff; font-size: 15px; cursor: pointer; }
+        #saveBtn { background: #4caf50; }
+        #findBtn { background: #3f51b5; }
+        #allBtn { background: #607d8b; }
+        .del { background: #e53935; padding: 6px 12px; }
+        #status { padding: 12px; border-radius: 6px; margin-bottom: 18px; display: none; white-space: pre-wrap; }
+        .ok { background: #e8f5e9; color: #1b5e20; display: block !important; }
+        .bad { background: #ffebee; color: #b71c1c; display: block !important; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #3f51b5; color: #fff; padding: 10px; text-align: left; }
+        td { padding: 10px; border-bottom: 1px solid #e0e0e0; }
+        .find-row { display: flex; gap: 10px; }
+        .find-row input { flex: 1; }
+        @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<header>Student Records</header>
+<div class="wrap">
+
+    <div id="status"></div>
+
+    <div class="box">
+        <h3>New Student</h3>
+        <div class="grid">
+            <input id="name" placeholder="Name">
+            <input id="course" placeholder="Course">
+            <input id="email" placeholder="Email">
+            <button id="saveBtn" type="button">Save</button>
+        </div>
+    </div>
+
+    <div class="box">
+        <h3>Search by ID</h3>
+        <div class="find-row">
+            <input id="searchId" type="number" placeholder="Student ID">
+            <button id="findBtn" type="button">Find</button>
+            <button id="allBtn" type="button">List All</button>
+        </div>
+    </div>
+
+    <div class="box">
+        <h3>Students</h3>
+        <table>
+            <thead><tr><th>ID</th><th>Name</th><th>Course</th><th>Email</th><th></th></tr></thead>
+            <tbody id="rows"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const URL_API = "/students";
+    const statusBox = document.getElementById("status");
+
+    function say(text, good) {
+        statusBox.className = good ? "ok" : "bad";
+        statusBox.textContent = text;
+    }
+
+    function draw(list) {
+        const body = document.getElementById("rows");
+        body.innerHTML = "";
+        if (!list.length) {
+            body.innerHTML = "<tr><td colspan='5'>Koi student nahi hai</td></tr>";
+            return;
+        }
+        list.forEach(function (s) {
+            const tr = document.createElement("tr");
+            tr.innerHTML = "<td>" + s.id + "</td><td>" + (s.name || "") + "</td><td>" +
+                           (s.course || "") + "</td><td>" + (s.email || "") + "</td>";
+            const td = document.createElement("td");
+            const b = document.createElement("button");
+            b.className = "del";
+            b.type = "button";
+            b.textContent = "Delete";
+            b.addEventListener("click", function () { removeStudent(s.id); });
+            td.appendChild(b);
+            tr.appendChild(td);
+            body.appendChild(tr);
+        });
+    }
+
+    async function listAll() {
+        try {
+            const res = await fetch(URL_API);
+            if (!res.ok) { say("List error: status " + res.status + "\n" + await res.text(), false); return; }
+            draw(await res.json());
+        } catch (e) {
+            say("Server se connect nahi ho paya: " + e, false);
+        }
+    }
+
+    async function saveStudent() {
+        const data = {
+            name: document.getElementById("name").value.trim(),
+            course: document.getElementById("course").value.trim(),
+            email: document.getElementById("email").value.trim()
+        };
+        if (!data.name || !data.course) { say("Name aur Course bharna zaroori hai", false); return; }
+        say("Saving...", true);
+        try {
+            const res = await fetch(URL_API, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+            });
+            const text = await res.text();
+            if (res.ok) {
+                say("Save ho gaya: " + text, true);
+                document.getElementById("name").value = "";
+                document.getElementById("course").value = "";
+                document.getElementById("email").value = "";
+                listAll();
+            } else {
+                say("Save nahi hua. Status: " + res.status + "\n" + text, false);
+            }
+        } catch (e) {
+            say("Server se connect nahi ho paya: " + e, false);
+        }
+    }
+
+    async function findStudent() {
+        const id = document.getElementById("searchId").value;
+        if (!id) { say("Pehle ID daalo", false); return; }
+        try {
+            const res = await fetch(URL_API + "/" + id);
+            if (res.ok) { draw([await res.json()]); say("Student mil gaya", true); }
+            else { draw([]); say("Is ID ka student nahi mila", false); }
+        } catch (e) {
+            say("Server se connect nahi ho paya: " + e, false);
+        }
+    }
+
+    async function removeStudent(id) {
+        if (!confirm("ID " + id + " delete karna hai?")) return;
+        try {
+            const res = await fetch(URL_API + "/" + id, { method: "DELETE" });
+            if (res.ok) { say("Delete ho gaya", true); listAll(); }
+            else { say("Delete nahi hua. Status: " + res.status, false); }
+        } catch (e) {
+            say("Server se connect nahi ho paya: " + e, false);
+        }
+    }
+
+    document.getElementById("saveBtn").addEventListener("click", saveStudent);
+    document.getElementById("findBtn").addEventListener("click", findStudent);
+    document.getElementById("allBtn").addEventListener("click", listAll);
+
+    listAll();
+</script>
+</body>
+</html>
